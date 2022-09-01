@@ -1,5 +1,4 @@
 import uselect
-import time
 import sys
 
 POLL_READ_ONLY = (
@@ -15,7 +14,7 @@ class SerialUSB:
         self._buffer = ""
         self._complete = []
         
-    def update(self):
+    def update(self) -> None:
         while self._listener.poll(0):
             new_c = str(sys.stdin.read(1))
             if new_c == "\n":
@@ -25,6 +24,9 @@ class SerialUSB:
                 self._buffer = ""
             else:
                 self._buffer += new_c
+                
+    def pending_len(self) -> int:
+        return len(self._buffer)
 
     def is_any(self) -> bool: 
         """

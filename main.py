@@ -1,21 +1,30 @@
 import time
 import serialusb
-from picographics import PicoGraphics, DISPLAY_TUFTY_2040
-
-display = PicoGraphics(display=DISPLAY_TUFTY_2040)
-display.set_font("bitmap8")
-BG = display.create_pen(0, 43, 54)
-FG_BODY = display.create_pen(131, 148, 150)
+import jenkinsdisplay
+import json
 
 if __name__ == "__main__":
     serial = serialusb.SerialUSB()
+    show = None
+    last_show_time = None
+    received_time = 0
     while True:
         serial.update()
         while serial.is_any():
-            show = serial.pop_next()
-            display.set_pen(BG)
-            display.clear()
-            display.set_pen(FG_BODY)
-            display.text("got " + show, 0, 0)
-            display.update()
+            show = json.loads(serial.pop_next())
+            last_show_time = None            
+            received_time = time.ticks_ms()
+            
+        if show is None:
+            jenkinsdisplay.display.set_pen(jenkinsdisplay.BG)
+            jenkinsdisplay.display.clear()
+            jenkinsdisplay.display.set_pen(jenkinsdisplay.FG_BODY)
+            jenkinsdisplay.display.text("len " + str(serial.pending_len()), 0, 100)
+            jenkinsdisplay.display.update()
+            
+        elif last_show_time is None or time.ticks_diff(time.ticks_ms(), last_show_time) > 333:
+            ms_since_received = time.ticks_diff(time.ticks_ms(), received_time)
+            jenkinsdisplay.show(show, ms_since_received)
+            last_show_time = time.ticks_ms()
+            
         time.sleep_ms(100)
