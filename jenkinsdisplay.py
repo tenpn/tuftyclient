@@ -88,8 +88,9 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
         display.set_pen(FG_BODY_EM)
         display.text(build_name_to_show, COL_TAB, this_row + ROW_SPACING+ROW_BIAS-2, scale=INFO_SCALE)
         
-        desc_text = str(machine_state["changelist"]) + " " + machine_state["step"]
-        print(f"-{desc_text}- on len {len(desc_text)} measured {display.measure_text(desc_text, scale=INFO_SCALE)} gives {len(desc_text) * (display.measure_text(desc_text, scale=INFO_SCALE)-MAX_DESC_WIDTH)/MAX_DESC_WIDTH}")
+        changelist_prefix = (str(machine_state["changelist"]) + " ") if "changelist" in machine_state else ""
+        desc_text = changelist_prefix + machine_state["step"]
+        #print(f"-{desc_text}- on len {len(desc_text)} measured {display.measure_text(desc_text, scale=INFO_SCALE)} gives {len(desc_text) * (display.measure_text(desc_text, scale=INFO_SCALE)-MAX_DESC_WIDTH)/MAX_DESC_WIDTH}")
         desc_text = compute_scrolled_text(desc_text, machine_elapsed_total_seconds, MAX_DESC_WIDTH, MAX_DESC_CHARS)
         display.text(desc_text, COL_TAB, this_row+ROW_SPACING + ROW_BIAS+row_info_height, scale=INFO_SCALE)
         
@@ -123,7 +124,7 @@ if __name__ == "__main__":
             "machine": "N1",
             "is_online": True,
             "build": "Health: pp-release-pc-EU-Debug",
-            "changelist": 24876,
+            #"changelist": 24876,
             "step": "Editmode-Tests",
             "duration": 200
         },
