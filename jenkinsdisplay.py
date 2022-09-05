@@ -23,7 +23,7 @@ MAX_BUILD_NAME_WIDTH = 255
 MAX_DESC_WIDTH = 190
 
 SCROLL_PAUSE: float = 3
-SCROLL_PX_SPEED: float = 30 # pixels per second
+SCROLL_DURATION: float = 3
 
 def draw_scrolled_text(text: str, timer: float, y: int, left_x: int, max_width: int) -> None:
     """draw some text, scrolling it to keep it fitted in the window. uses ROW_INFO_HEIGHT as implicit window height.
@@ -42,14 +42,13 @@ def draw_scrolled_text(text: str, timer: float, y: int, left_x: int, max_width: 
         return
     
     px_to_scroll = full_text_width - max_width
-    scroll_duration = px_to_scroll / SCROLL_PX_SPEED
-    total_cycle_duration = SCROLL_PAUSE*2.0 + scroll_duration*2.0
+    total_cycle_duration = SCROLL_PAUSE*2.0 + SCROLL_DURATION*2.0
     intra_cycle_time = timer % total_cycle_duration
     
     scroll_t = 0 if intra_cycle_time < SCROLL_PAUSE \
-        else ((intra_cycle_time-SCROLL_PAUSE)/scroll_duration) if intra_cycle_time < (SCROLL_PAUSE+scroll_duration) \
-        else 1 if intra_cycle_time < (SCROLL_PAUSE+scroll_duration+SCROLL_PAUSE) \
-        else (1-((intra_cycle_time-(SCROLL_PAUSE*2+scroll_duration))/scroll_duration))
+        else ((intra_cycle_time-SCROLL_PAUSE)/SCROLL_DURATION) if intra_cycle_time < (SCROLL_PAUSE+SCROLL_DURATION) \
+        else 1 if intra_cycle_time < (SCROLL_PAUSE+SCROLL_DURATION+SCROLL_PAUSE) \
+        else (1-((intra_cycle_time-(SCROLL_PAUSE*2+SCROLL_DURATION))/SCROLL_DURATION))
         
     display.set_clip(left_x, y, max_width, ROW_INFO_HEIGHT)
     display.text(text, left_x - int(scroll_t*px_to_scroll), y, scale=INFO_SCALE)
@@ -83,18 +82,17 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
         if "build" not in machine_state:
             continue
         
-        machine_elapsed_total_seconds = machine_state["duration"] + (ms_since_received/1000.0)        
-
         display.set_pen(FG_BODY_EM)
         
-        draw_scrolled_text(machine_state["build"], machine_elapsed_total_seconds, this_row + ROW_SPACING+ROW_BIAS-2, COL_TAB, MAX_BUILD_NAME_WIDTH)
+        scroll_timer = ms_since_received/1000.0
+        draw_scrolled_text(machine_state["build"], scroll_timer, this_row + ROW_SPACING+ROW_BIAS-2, COL_TAB, MAX_BUILD_NAME_WIDTH)
         
         changelist_prefix = (str(machine_state["changelist"]) + " ") if "changelist" in machine_state else ""
         desc_text = changelist_prefix + machine_state["step"]
-        draw_scrolled_text(
-            desc_text, machine_elapsed_total_seconds, this_row+ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT, COL_TAB, MAX_DESC_WIDTH)
+        draw_scrolled_text(desc_text, scroll_timer, this_row+ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT, COL_TAB, MAX_DESC_WIDTH)
         
         # build a nice elapsed string
+        machine_elapsed_total_seconds = machine_state["duration"] + (ms_since_received/1000.0)
         machine_elapsed_hours = math.floor(machine_elapsed_total_seconds/3600)
         machine_elapsed_minutes = math.floor((machine_elapsed_total_seconds - (machine_elapsed_hours*3600))/60)
         machine_elapsed_seconds = math.floor(machine_elapsed_total_seconds - (machine_elapsed_minutes*60) - (machine_elapsed_hours*3600))
