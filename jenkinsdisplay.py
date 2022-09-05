@@ -18,40 +18,43 @@ ROW_SCALE = 4
 COL_TAB = 55
 COL_TAB_2 = 250
 INFO_SCALE = 2
+ROW_INFO_HEIGHT = 8*INFO_SCALE
 MAX_BUILD_NAME_WIDTH = 255
-MAX_BUILD_NAME_CHARS = 28
-MAX_DESC_WIDTH = 195
-MAX_DESC_CHARS = 19
+MAX_DESC_WIDTH = 190
 
 SCROLL_PAUSE: float = 3
-SCROLL_SPEED: float = 3 # char per second
+SCROLL_PX_SPEED: float = 30 # pixels per second
 
-def compute_scrolled_text(full_text: str, timer: float, max_width: int, max_chars: int) -> str:
-    """scrolls this text according to the constants
+def draw_scrolled_text(text: str, timer: float, y: int, left_x: int, max_width: int) -> None:
+    """draw some text, scrolling it to keep it fitted in the window. uses ROW_INFO_HEIGHT as implicit window height.
 
     Args:
-        full_text (str): text to scroll
-        max_width (int): how many pixels wide can we show at once
-        timer (float): duration in seconds
-
-    Returns:
-        str: scrolled string that fits in max_width
+        timer (float): some seconds-based timer, to do scrolling off
+        y (int): top row of the window we're drawning in
+        left_x (int): left edge of window we're drawing in 
+        max_width (int): width of window we're drawing in
     """
-    full_text_width = display.measure_text(full_text, scale=INFO_SCALE)
-    if full_text_width > max_width:
-        # how many chars do we need to scroll to fit in the desired width? roughly!
-        chars_to_scroll = math.ceil(len(full_text) * (full_text_width-max_width)/max_width)
-        scroll_duration = chars_to_scroll / SCROLL_SPEED
-        total_cycle_duration = SCROLL_PAUSE*2.0 + scroll_duration*2.0
-        intra_cycle_time = timer % total_cycle_duration
-        # pause, forwards, pause, back
-        char_pos = 0 if intra_cycle_time < SCROLL_PAUSE \
-            else (((intra_cycle_time-SCROLL_PAUSE)/scroll_duration) * chars_to_scroll) if intra_cycle_time < (SCROLL_PAUSE+scroll_duration) \
-            else chars_to_scroll if intra_cycle_time < (SCROLL_PAUSE+scroll_duration+SCROLL_PAUSE) \
-            else ((1-((intra_cycle_time-(SCROLL_PAUSE*2+scroll_duration))/scroll_duration)) * chars_to_scroll)
-        return full_text[math.floor(char_pos):(math.floor(char_pos)+max_chars)]
-    else:
-        return full_text
+    
+    full_text_width = display.measure_text(text, scale=INFO_SCALE)
+    
+    if full_text_width <= max_width:
+        display.text(text, left_x, y, scale=INFO_SCALE)
+        return
+    
+    px_to_scroll = full_text_width - max_width
+    scroll_duration = px_to_scroll / SCROLL_PX_SPEED
+    total_cycle_duration = SCROLL_PAUSE*2.0 + scroll_duration*2.0
+    intra_cycle_time = timer % total_cycle_duration
+    
+    scroll_t = 0 if intra_cycle_time < SCROLL_PAUSE \
+        else ((intra_cycle_time-SCROLL_PAUSE)/scroll_duration) if intra_cycle_time < (SCROLL_PAUSE+scroll_duration) \
+        else 1 if intra_cycle_time < (SCROLL_PAUSE+scroll_duration+SCROLL_PAUSE) \
+        else (1-((intra_cycle_time-(SCROLL_PAUSE*2+scroll_duration))/scroll_duration))
+        
+    display.set_clip(left_x, y, max_width, ROW_INFO_HEIGHT)
+    display.text(text, left_x - int(scroll_t*px_to_scroll), y, scale=INFO_SCALE)
+    display.remove_clip()
+
 
 def show(jenkins_state: dict, ms_since_received: int) -> None:
     """displays state on picographics
@@ -67,7 +70,6 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
 
     row_step = 8*ROW_SCALE + ROW_SPACING*2
     row = (int)(ROW_SPACING/2)
-    row_info_height = 8*INFO_SCALE
 
     for machine_state in jenkins_state["machines"]:
         display.set_pen(BG_EM)
@@ -83,16 +85,14 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
         
         machine_elapsed_total_seconds = machine_state["duration"] + (ms_since_received/1000.0)        
 
-        build_name_to_show = compute_scrolled_text(machine_state["build"], machine_elapsed_total_seconds, MAX_BUILD_NAME_WIDTH, MAX_BUILD_NAME_CHARS)
-            
         display.set_pen(FG_BODY_EM)
-        display.text(build_name_to_show, COL_TAB, this_row + ROW_SPACING+ROW_BIAS-2, scale=INFO_SCALE)
+        
+        draw_scrolled_text(machine_state["build"], machine_elapsed_total_seconds, this_row + ROW_SPACING+ROW_BIAS-2, COL_TAB, MAX_BUILD_NAME_WIDTH)
         
         changelist_prefix = (str(machine_state["changelist"]) + " ") if "changelist" in machine_state else ""
         desc_text = changelist_prefix + machine_state["step"]
-        #print(f"-{desc_text}- on len {len(desc_text)} measured {display.measure_text(desc_text, scale=INFO_SCALE)} gives {len(desc_text) * (display.measure_text(desc_text, scale=INFO_SCALE)-MAX_DESC_WIDTH)/MAX_DESC_WIDTH}")
-        desc_text = compute_scrolled_text(desc_text, machine_elapsed_total_seconds, MAX_DESC_WIDTH, MAX_DESC_CHARS)
-        display.text(desc_text, COL_TAB, this_row+ROW_SPACING + ROW_BIAS+row_info_height, scale=INFO_SCALE)
+        draw_scrolled_text(
+            desc_text, machine_elapsed_total_seconds, this_row+ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT, COL_TAB, MAX_DESC_WIDTH)
         
         # build a nice elapsed string
         machine_elapsed_hours = math.floor(machine_elapsed_total_seconds/3600)
@@ -100,7 +100,7 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
         machine_elapsed_seconds = math.floor(machine_elapsed_total_seconds - (machine_elapsed_minutes*60) - (machine_elapsed_hours*3600))
         machine_elapsed_str = f"{machine_elapsed_hours}:{machine_elapsed_minutes:02}:{machine_elapsed_seconds:02}"
         display.set_pen(FG_BODY)
-        display.text(machine_elapsed_str, COL_TAB_2, this_row + ROW_SPACING + ROW_BIAS+row_info_height, scale=INFO_SCALE)
+        display.text(machine_elapsed_str, COL_TAB_2, this_row + ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT, scale=INFO_SCALE)
 
     display.set_pen(HIGH_BLUE)
     display.line(0, row, 320, row)
@@ -124,7 +124,7 @@ if __name__ == "__main__":
             "machine": "N1",
             "is_online": True,
             "build": "Health: pp-release-pc-EU-Debug",
-            #"changelist": 24876,
+            "changelist": 24876,
             "step": "Editmode-Tests",
             "duration": 200
         },
