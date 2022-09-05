@@ -1,5 +1,6 @@
 from picographics import PicoGraphics, DISPLAY_TUFTY_2040
 import math
+import time
 
 display = PicoGraphics(display=DISPLAY_TUFTY_2040)
 
@@ -17,6 +18,40 @@ ROW_SCALE = 4
 COL_TAB = 55
 COL_TAB_2 = 250
 INFO_SCALE = 2
+MAX_BUILD_NAME_WIDTH = 255
+MAX_BUILD_NAME_CHARS = 28
+MAX_DESC_WIDTH = 195
+MAX_DESC_CHARS = 19
+
+SCROLL_PAUSE: float = 3
+SCROLL_SPEED: float = 3 # char per second
+
+def compute_scrolled_text(full_text: str, timer: float, max_width: int, max_chars: int) -> str:
+    """scrolls this text according to the constants
+
+    Args:
+        full_text (str): text to scroll
+        max_width (int): how many pixels wide can we show at once
+        timer (float): duration in seconds
+
+    Returns:
+        str: scrolled string that fits in max_width
+    """
+    full_text_width = display.measure_text(full_text, scale=INFO_SCALE)
+    if full_text_width > max_width:
+        # how many chars do we need to scroll to fit in the desired width? roughly!
+        chars_to_scroll = math.ceil(len(full_text) * (full_text_width-max_width)/max_width)
+        scroll_duration = chars_to_scroll / SCROLL_SPEED
+        total_cycle_duration = SCROLL_PAUSE*2.0 + scroll_duration*2.0
+        intra_cycle_time = timer % total_cycle_duration
+        # pause, forwards, pause, back
+        char_pos = 0 if intra_cycle_time < SCROLL_PAUSE \
+            else (((intra_cycle_time-SCROLL_PAUSE)/scroll_duration) * chars_to_scroll) if intra_cycle_time < (SCROLL_PAUSE+scroll_duration) \
+            else chars_to_scroll if intra_cycle_time < (SCROLL_PAUSE+scroll_duration+SCROLL_PAUSE) \
+            else ((1-((intra_cycle_time-(SCROLL_PAUSE*2+scroll_duration))/scroll_duration)) * chars_to_scroll)
+        return full_text[math.floor(char_pos):(math.floor(char_pos)+max_chars)]
+    else:
+        return full_text
 
 def show(jenkins_state: dict, ms_since_received: int) -> None:
     """displays state on picographics
@@ -46,14 +81,19 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
         if "build" not in machine_state:
             continue
         
+        machine_elapsed_total_seconds = machine_state["duration"] + (ms_since_received/1000.0)        
+
+        build_name_to_show = compute_scrolled_text(machine_state["build"], machine_elapsed_total_seconds, MAX_BUILD_NAME_WIDTH, MAX_BUILD_NAME_CHARS)
+            
         display.set_pen(FG_BODY_EM)
-        display.text(machine_state["build"] + " " + str(machine_state["changelist"]), COL_TAB, this_row +
-                    ROW_SPACING+ROW_BIAS-2, scale=INFO_SCALE)
-        display.text(machine_state["step"], COL_TAB, this_row+ROW_SPACING +
-                    ROW_BIAS+row_info_height, scale=INFO_SCALE)
+        display.text(build_name_to_show, COL_TAB, this_row + ROW_SPACING+ROW_BIAS-2, scale=INFO_SCALE)
+        
+        desc_text = str(machine_state["changelist"]) + " " + machine_state["step"]
+        print(f"-{desc_text}- on len {len(desc_text)} measured {display.measure_text(desc_text, scale=INFO_SCALE)} gives {len(desc_text) * (display.measure_text(desc_text, scale=INFO_SCALE)-MAX_DESC_WIDTH)/MAX_DESC_WIDTH}")
+        desc_text = compute_scrolled_text(desc_text, machine_elapsed_total_seconds, MAX_DESC_WIDTH, MAX_DESC_CHARS)
+        display.text(desc_text, COL_TAB, this_row+ROW_SPACING + ROW_BIAS+row_info_height, scale=INFO_SCALE)
         
         # build a nice elapsed string
-        machine_elapsed_total_seconds = machine_state["duration"] + (ms_since_received/1000)
         machine_elapsed_hours = math.floor(machine_elapsed_total_seconds/3600)
         machine_elapsed_minutes = math.floor((machine_elapsed_total_seconds - (machine_elapsed_hours*3600))/60)
         machine_elapsed_seconds = math.floor(machine_elapsed_total_seconds - (machine_elapsed_minutes*60) - (machine_elapsed_hours*3600))
@@ -82,7 +122,7 @@ if __name__ == "__main__":
         {
             "machine": "N1",
             "is_online": True,
-            "build": "Health: pp-trunk-pc-EU-Debug",
+            "build": "Health: pp-release-pc-EU-Debug",
             "changelist": 24876,
             "step": "Editmode-Tests",
             "duration": 200
@@ -90,10 +130,23 @@ if __name__ == "__main__":
         {
             "machine": "N2",
             "is_online": True,
+            "build": "Deploy: pp-release-ps5-EU-Release",
+            "changelist": 24876,
+            "step": "Editmode-Tests HERE LONG",
+            "duration": 1230
         },
         {
             "machine": "N3",
-            "is_online": False,
+            "is_online": True,
+            "build": "pp-trunk-pc-debug",
+            "changelist": 24876,
+            "step": "Prewarm",
+            "duration": 2320
         },
     ]}
-    show(data, 0)
+    last_show = -1
+    start_time = time.ticks_ms()
+    while True:
+        if last_show < 0 or time.ticks_diff(time.ticks_ms(), last_show) > 250:
+            show(data, time.ticks_diff(time.ticks_ms(), start_time))
+
