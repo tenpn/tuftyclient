@@ -22,7 +22,7 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
     """displays state on picographics
 
     Args:
-        jenkins_state (object): {machines:[{machine: "", build: "", changelist: 0, step: "", duration: 0 }]}
+        jenkins_state (object): {machines:[{machine: "", is_online: True/False, build: "", changelist: 0, step: "", duration: int/seconds }]} -- if build is missing, assumes offline
     """
     display.set_pen(BG)
     display.clear()
@@ -36,16 +36,21 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
 
     for machine_state in jenkins_state["machines"]:
         display.set_pen(BG_EM)
-        display.line(0, row, 320, row)
+        this_row = row
+        row += row_step
+        display.line(0, this_row, 320, this_row)
 
-        display.set_pen(FG_BODY_BG)
-        display.text(machine_state["machine"], 10, row+ROW_SPACING+ROW_BIAS, scale=ROW_SCALE)
+        display.set_pen(FG_BODY if machine_state["is_online"] else FG_BODY_BG)
+        display.text(machine_state["machine"], 10, this_row+ROW_SPACING+ROW_BIAS, scale=ROW_SCALE)
+        
+        if "build" not in machine_state:
+            continue
+        
         display.set_pen(FG_BODY_EM)
-        display.text(machine_state["build"] + " " + str(machine_state["changelist"]), COL_TAB, row +
+        display.text(machine_state["build"] + " " + str(machine_state["changelist"]), COL_TAB, this_row +
                     ROW_SPACING+ROW_BIAS-2, scale=INFO_SCALE)
-        display.text(machine_state["step"], COL_TAB, row+ROW_SPACING +
+        display.text(machine_state["step"], COL_TAB, this_row+ROW_SPACING +
                     ROW_BIAS+row_info_height, scale=INFO_SCALE)
-        display.set_pen(FG_BODY)
         
         # build a nice elapsed string
         machine_elapsed_total_seconds = machine_state["duration"] + (ms_since_received/1000)
@@ -53,8 +58,8 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
         machine_elapsed_minutes = math.floor((machine_elapsed_total_seconds - (machine_elapsed_hours*3600))/60)
         machine_elapsed_seconds = math.floor(machine_elapsed_total_seconds - (machine_elapsed_minutes*60) - (machine_elapsed_hours*3600))
         machine_elapsed_str = f"{machine_elapsed_hours}:{machine_elapsed_minutes:02}:{machine_elapsed_seconds:02}"
-        display.text(machine_elapsed_str, COL_TAB_2, row+ROW_SPACING + ROW_BIAS+row_info_height, scale=INFO_SCALE)
-        row += row_step
+        display.set_pen(FG_BODY)
+        display.text(machine_elapsed_str, COL_TAB_2, this_row + ROW_SPACING + ROW_BIAS+row_info_height, scale=INFO_SCALE)
 
     display.set_pen(HIGH_BLUE)
     display.line(0, row, 320, row)
@@ -70,3 +75,25 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
                 2+10, row_status_circle_center-8, scale=INFO_SCALE)
 
     display.update()
+
+if __name__ == "__main__":
+    # some testing data 
+    data = {"machines": [
+        {
+            "machine": "N1",
+            "is_online": True,
+            "build": "Health: pp-trunk-pc-EU-Debug",
+            "changelist": 24876,
+            "step": "Editmode-Tests",
+            "duration": 200
+        },
+        {
+            "machine": "N2",
+            "is_online": True,
+        },
+        {
+            "machine": "N3",
+            "is_online": False,
+        },
+    ]}
+    show(data, 0)

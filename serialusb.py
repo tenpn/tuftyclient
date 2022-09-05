@@ -1,7 +1,7 @@
 import uselect
 import sys
 
-POLL_READ_ONLY = (
+POLL_READ_ONLY: int = (
     uselect.POLLIN |
     uselect.POLLHUP |
     uselect.POLLERR

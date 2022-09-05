@@ -6,13 +6,13 @@ import json
 if __name__ == "__main__":
     serial = serialusb.SerialUSB()
     show = None
-    last_show_time = None
-    received_time = 0
+    last_show_time : int = -1
+    received_time : int = 0
     while True:
         serial.update()
         while serial.is_any():
             show = json.loads(serial.pop_next())
-            last_show_time = None            
+            last_show_time = -1
             received_time = time.ticks_ms()
             
         if show is None:
@@ -22,7 +22,7 @@ if __name__ == "__main__":
             jenkinsdisplay.display.text("len " + str(serial.pending_len()), 0, 100)
             jenkinsdisplay.display.update()
             
-        elif last_show_time is None or time.ticks_diff(time.ticks_ms(), last_show_time) > 333:
+        elif last_show_time == -1 or time.ticks_diff(time.ticks_ms(), last_show_time) > 333:
             ms_since_received = time.ticks_diff(time.ticks_ms(), received_time)
             jenkinsdisplay.show(show, ms_since_received)
             last_show_time = time.ticks_ms()
