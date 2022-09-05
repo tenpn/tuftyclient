@@ -25,6 +25,26 @@ MAX_DESC_WIDTH = 190
 SCROLL_PAUSE: float = 3
 SCROLL_DURATION: float = 3
 
+
+def draw_prefixed_scrolled_text(prefix: str, text: str, timer: float, left_x: int, max_width: int, y: int) -> None:
+    """draws a prefix, then the main string in a scrolling window
+
+    Args:
+        prefix (str): doesn't scroll
+        text (str): main text. could scroll if doesn't fit in remaining space
+        timer (float): some seconds-based timer, to do scrolling off
+        left_x (int): left edge of the window we're drawing in 
+        max_width (int): width of window we're drawing in 
+        y (int): top row of the window we're drawing in
+    """
+    if len(prefix) > 0:
+        display.text(prefix, left_x, y, scale=INFO_SCALE)
+        prefix_width = display.measure_text(prefix, scale=INFO_SCALE) + 4
+        left_x += prefix_width
+        max_width -= prefix_width
+
+    draw_scrolled_text(text, timer, y, left_x, max_width)
+
 def draw_scrolled_text(text: str, timer: float, y: int, left_x: int, max_width: int) -> None:
     """draw some text, scrolling it to keep it fitted in the window. uses ROW_INFO_HEIGHT as implicit window height.
 
@@ -53,7 +73,6 @@ def draw_scrolled_text(text: str, timer: float, y: int, left_x: int, max_width: 
     display.set_clip(left_x, y, max_width, ROW_INFO_HEIGHT)
     display.text(text, left_x - int(scroll_t*px_to_scroll), y, scale=INFO_SCALE)
     display.remove_clip()
-
 
 def show(jenkins_state: dict, ms_since_received: int) -> None:
     """displays state on picographics
@@ -85,11 +104,22 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
         display.set_pen(FG_BODY_EM)
         
         scroll_timer = ms_since_received/1000.0
-        draw_scrolled_text(machine_state["build"], scroll_timer, this_row + ROW_SPACING+ROW_BIAS-2, COL_TAB, MAX_BUILD_NAME_WIDTH)
         
-        changelist_prefix = (str(machine_state["changelist"]) + " ") if "changelist" in machine_state else ""
-        desc_text = changelist_prefix + machine_state["step"]
-        draw_scrolled_text(desc_text, scroll_timer, this_row+ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT, COL_TAB, MAX_DESC_WIDTH)
+        # "Health:" and "Deploy:" prefixes don't scroll
+        build_prefix = ""
+        build_name = machine_state["build"]
+        build_delim_index = build_name.find(":")
+        if build_delim_index >= 0:
+            build_prefix = build_name[:build_delim_index+1]
+            build_name = build_name[build_delim_index+1:].strip()
+            
+        draw_prefixed_scrolled_text(build_prefix, build_name, scroll_timer, COL_TAB, MAX_BUILD_NAME_WIDTH, this_row + ROW_SPACING+ROW_BIAS-2)
+        
+        # changelists don't scroll
+        desc_prefix = str(machine_state["changelist"]) if "changelist" in machine_state else ""
+        desc_text = machine_state["step"]
+        
+        draw_prefixed_scrolled_text(desc_prefix, desc_text, scroll_timer, COL_TAB, MAX_DESC_WIDTH, this_row+ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT)
         
         # build a nice elapsed string
         machine_elapsed_total_seconds = machine_state["duration"] + (ms_since_received/1000.0)
