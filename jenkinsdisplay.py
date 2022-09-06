@@ -1,16 +1,25 @@
-from picographics import PicoGraphics, DISPLAY_TUFTY_2040
+from picographics import PicoGraphics, DISPLAY_TUFTY_2040, PEN_RGB565
 import math
 import time
 
-display = PicoGraphics(display=DISPLAY_TUFTY_2040)
+display = PicoGraphics(display=DISPLAY_TUFTY_2040, pen_type=PEN_RGB565)
 
-BG = display.create_pen(0, 43, 54)
-BG_EM = display.create_pen(7, 54, 66)
-FG_BODY = display.create_pen(131, 148, 150)
-FG_BODY_EM = display.create_pen(147, 161, 161)
-FG_BODY_BG = display.create_pen(88, 110, 117)
-HIGH_BLUE = display.create_pen(38, 139, 210)
+# solarized colours
+BG = display.create_pen(0, 43, 54) # base03
+BG_EM = display.create_pen(7, 54, 66) # base02
+FG_BODY = display.create_pen(131, 148, 150) # base0
+FG_BODY_EM = display.create_pen(147, 161, 161) # base1
+FG_BODY_BG = display.create_pen(88, 110, 117) # base01
+
+HIGH_RED = display.create_pen(220, 50, 47)
+HIGH_YELLOW = display.create_pen(181, 137, 0)
 HIGH_GREEN = display.create_pen(133, 153, 0)
+
+HIGH_BLUE = display.create_pen(38, 139, 210)
+HIGH_CYAN = display.create_pen(42, 161, 152)
+HIGH_MAGENTA = display.create_pen(211, 54, 130)
+HIGH_ORANGE = display.create_pen(203, 75, 22)
+HIGH_VIOLET = display.create_pen(108, 113, 196)
 
 ROW_SPACING = 10
 ROW_BIAS = 2  # text rendering doesn't seem exact? compensate!
@@ -25,8 +34,7 @@ MAX_DESC_WIDTH = 190
 SCROLL_PAUSE: float = 3
 SCROLL_DURATION: float = 3
 
-
-def draw_prefixed_scrolled_text(prefix: str, text: str, timer: float, left_x: int, max_width: int, y: int) -> None:
+def draw_prefixed_scrolled_text(prefix: str, text: str, timer: float, left_x: int, max_width: int, y: int, prefix_col, text_col) -> None:
     """draws a prefix, then the main string in a scrolling window
 
     Args:
@@ -38,11 +46,13 @@ def draw_prefixed_scrolled_text(prefix: str, text: str, timer: float, left_x: in
         y (int): top row of the window we're drawing in
     """
     if len(prefix) > 0:
+        display.set_pen(prefix_col)
         display.text(prefix, left_x, y, scale=INFO_SCALE)
         prefix_width = display.measure_text(prefix, scale=INFO_SCALE) + 4
         left_x += prefix_width
         max_width -= prefix_width
 
+    display.set_pen(text_col)
     draw_scrolled_text(text, timer, y, left_x, max_width)
 
 def draw_scrolled_text(text: str, timer: float, y: int, left_x: int, max_width: int) -> None:
@@ -73,6 +83,20 @@ def draw_scrolled_text(text: str, timer: float, y: int, left_x: int, max_width: 
     display.set_clip(left_x, y, max_width, ROW_INFO_HEIGHT)
     display.text(text, left_x - int(scroll_t*px_to_scroll), y, scale=INFO_SCALE)
     display.remove_clip()
+    
+def get_time_breakdown(total_secs: float):
+    """takes seconds, splits into hours/mins/secs
+
+    Args:
+        total_secs (int): 
+
+    Returns:
+        (int, int, int): (hours, minutes, seconds)
+    """
+    complete_hours = int(math.floor(total_secs/3600.0))
+    complete_minutes = int(math.floor((total_secs - (complete_hours*3600))/60.0))
+    remaining_seconds = int(math.floor(total_secs - (complete_minutes*60) - (complete_hours*3600)))
+    return (complete_hours, complete_minutes, remaining_seconds)
 
 def show(jenkins_state: dict, ms_since_received: int) -> None:
     """displays state on picographics
@@ -101,8 +125,6 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
         if "build" not in machine_state:
             continue
         
-        display.set_pen(FG_BODY_EM)
-        
         scroll_timer = ms_since_received/1000.0
         
         # "Health:" and "Deploy:" prefixes don't scroll
@@ -113,21 +135,36 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
             build_prefix = build_name[:build_delim_index+1]
             build_name = build_name[build_delim_index+1:].strip()
             
-        draw_prefixed_scrolled_text(build_prefix, build_name, scroll_timer, COL_TAB, MAX_BUILD_NAME_WIDTH, this_row + ROW_SPACING+ROW_BIAS-2)
+        build_prefix_col = HIGH_VIOLET if "Health" in build_prefix \
+            else HIGH_CYAN if "Deploy" in build_prefix \
+            else FG_BODY_BG
+        draw_prefixed_scrolled_text(build_prefix, 
+                                    build_name, 
+                                    scroll_timer, 
+                                    COL_TAB,
+                                    MAX_BUILD_NAME_WIDTH, 
+                                    this_row + ROW_SPACING+ROW_BIAS-2, 
+                                    build_prefix_col, 
+                                    HIGH_BLUE)
         
         # changelists don't scroll
         desc_prefix = str(machine_state["changelist"]) if "changelist" in machine_state else ""
         desc_text = machine_state["step"]
         
-        draw_prefixed_scrolled_text(desc_prefix, desc_text, scroll_timer, COL_TAB, MAX_DESC_WIDTH, this_row+ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT)
+        draw_prefixed_scrolled_text(desc_prefix, 
+                                    desc_text, 
+                                    scroll_timer, 
+                                    COL_TAB, 
+                                    MAX_DESC_WIDTH, 
+                                    this_row+ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT, 
+                                    FG_BODY_BG, 
+                                    FG_BODY)
         
         # build a nice elapsed string
-        machine_elapsed_total_seconds = machine_state["duration"] + (ms_since_received/1000.0)
-        machine_elapsed_hours = math.floor(machine_elapsed_total_seconds/3600)
-        machine_elapsed_minutes = math.floor((machine_elapsed_total_seconds - (machine_elapsed_hours*3600))/60)
-        machine_elapsed_seconds = math.floor(machine_elapsed_total_seconds - (machine_elapsed_minutes*60) - (machine_elapsed_hours*3600))
+        (machine_elapsed_hours, machine_elapsed_minutes, machine_elapsed_seconds) = \
+            get_time_breakdown(machine_state["duration"] + (ms_since_received/1000))
         machine_elapsed_str = f"{machine_elapsed_hours}:{machine_elapsed_minutes:02}:{machine_elapsed_seconds:02}"
-        display.set_pen(FG_BODY)
+        display.set_pen(FG_BODY_BG)
         display.text(machine_elapsed_str, COL_TAB_2, this_row + ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT, scale=INFO_SCALE)
 
     display.set_pen(HIGH_BLUE)
@@ -143,6 +180,13 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
     display.text("Health: PS4 Rel 20220", 10+status_circle_radius *
                 2+10, row_status_circle_center-8, scale=INFO_SCALE)
 
+    (data_age_hours, data_age_mins, data_age_secs) = get_time_breakdown(ms_since_received/1000)
+    data_age_str = "rx " + \
+        (f"{data_age_hours}:{data_age_mins:02}:{data_age_secs:02}" if data_age_hours > 0 else f"{data_age_mins}:{data_age_secs:02}")
+    data_age_width = display.measure_text(data_age_str, scale=1)
+    display.set_pen(FG_BODY_BG if ms_since_received < 900000 else FG_BODY_EM)
+    display.text(data_age_str, 305-data_age_width, 225, scale=1)
+    
     display.update()
 
 if __name__ == "__main__":
@@ -151,7 +195,7 @@ if __name__ == "__main__":
         {
             "machine": "N1",
             "is_online": True,
-            "build": "Health: pp-release-pc-EU-Debug",
+            "build": "Health: release-pc-EU-Debug",
             "changelist": 24876,
             "step": "Editmode-Tests",
             "duration": 200
@@ -159,7 +203,7 @@ if __name__ == "__main__":
         {
             "machine": "N2",
             "is_online": True,
-            "build": "Deploy: pp-release-ps5-EU-Release",
+            "build": "Deploy: release-ps5-EU-Release",
             "changelist": 24876,
             "step": "Editmode-Tests HERE LONG",
             "duration": 1230
@@ -167,7 +211,7 @@ if __name__ == "__main__":
         {
             "machine": "N3",
             "is_online": True,
-            "build": "pp-trunk-pc-debug",
+            "build": "trunk-pc-debug",
             "changelist": 24876,
             "step": "Prewarm",
             "duration": 2320
