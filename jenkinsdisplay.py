@@ -98,7 +98,15 @@ def get_time_breakdown(total_secs: float):
     remaining_seconds = int(math.floor(total_secs - (complete_minutes*60) - (complete_hours*3600)))
     return (complete_hours, complete_minutes, remaining_seconds)
 
-def show_machine(machine_state: dict, this_row: int, scroll_timer: float) -> None:
+def show_machine(machine_state: dict, this_row: int, scroll_timer: float, clock_adjust: float) -> None:
+    """shows the state of one machine
+
+    Args:
+        machine_state (dict): from json
+        this_row (int): y value we should start drarwing at 
+        scroll_timer (float): used for scrolling text, seconds
+        clock_adjust (float): time since we got this info, seconds
+    """
     display.set_pen(BG_EM)
     display.line(0, this_row, 320, this_row)
 
@@ -136,7 +144,7 @@ def show_machine(machine_state: dict, this_row: int, scroll_timer: float) -> Non
 
     draw_prefixed_scrolled_text(desc_prefix,
                                 desc_text,
-                                scroll_timer,
+                                scroll_timer-0.4,
                                 COL_TAB,
                                 MAX_DESC_WIDTH,
                                 this_row+ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT,
@@ -145,12 +153,13 @@ def show_machine(machine_state: dict, this_row: int, scroll_timer: float) -> Non
 
     # build a nice elapsed string
     (machine_elapsed_hours, machine_elapsed_minutes, machine_elapsed_seconds) = \
-        get_time_breakdown(machine_state["duration"] + scroll_timer)
+        get_time_breakdown(machine_state["duration"] + clock_adjust)
     machine_elapsed_str = f"{machine_elapsed_hours}:{machine_elapsed_minutes:02}:{machine_elapsed_seconds:02}"
     display.set_pen(FG_BODY_BG)
     display.text(machine_elapsed_str, COL_TAB_2, this_row + ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT, scale=INFO_SCALE)
     
-def show_recent(recent_state: dict, top: int, scroll_timer:float) -> None:
+
+def show_recent(recent_state: dict, top: int, scroll_timer: float, clock_adjust: float) -> None:
     """takes up bottom part of screen with a single Interesting build
 
     Args:
@@ -188,7 +197,7 @@ def show_recent(recent_state: dict, top: int, scroll_timer:float) -> None:
     display.text(str(recent_state["changelist"]), text_tab, row_status_circle_center+1)
     
     display.set_pen(FG_BODY_BG)
-    (recent_hours, recent_minutes, recent_seconds) = get_time_breakdown(recent_state["age"] + scroll_timer)
+    (recent_hours, recent_minutes, recent_seconds) = get_time_breakdown(recent_state["age"] + clock_adjust)
     recent_age_str = f"{recent_hours}:{recent_minutes:02}:{recent_seconds:02}"
     display.text(recent_age_str, COL_TAB_2, row_status_circle_center+1, scale=INFO_SCALE)
 
@@ -207,16 +216,18 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
     row_step = 8*ROW_SCALE + ROW_SPACING*2
     row = (int)(ROW_SPACING/2)
 
-    scroll_timer = ms_since_received/1000.0
-    
+    clock_adjust = ms_since_received/1000.0
+    scroll_timer = clock_adjust
+
     for machine_state in jenkins_state["machines"]:
-        show_machine(machine_state, row, scroll_timer)
+        show_machine(machine_state, row, scroll_timer, clock_adjust)
         row += row_step
+        scroll_timer -= 0.8
         
-    show_recent(jenkins_state["recent"], row, scroll_timer)
+    show_recent(jenkins_state["recent"], row, scroll_timer, clock_adjust)
     
     # show how old this data is in the corner
-    (data_age_hours, data_age_mins, data_age_secs) = get_time_breakdown(ms_since_received/1000)
+    (data_age_hours, data_age_mins, data_age_secs) = get_time_breakdown(clock_adjust)
     data_age_str = "rx " + \
         (f"{data_age_hours}:{data_age_mins:02}:{data_age_secs:02}" if data_age_hours > 0 else f"{data_age_mins}:{data_age_secs:02}")
     data_age_width = display.measure_text(data_age_str, scale=1)
@@ -250,12 +261,12 @@ if __name__ == "__main__":
                 "is_online": True,
                 "build": "trunk-pc-debug",
                 "changelist": 24876,
-                "step": "Prewarm",
+                "step": "Prewarm LONG TOO",
                 "duration": 2320
             },
         ],
         "recent": {
-            "build": "Deploy: trunk-PC-WW-Debug",
+            "build": "Deploy: release-PC-WW-release",
             "changelist": 24897,
             "age": 700,
             "result": "SUCCESS"
