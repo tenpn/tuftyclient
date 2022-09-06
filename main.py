@@ -22,7 +22,7 @@ if __name__ == "__main__":
             jenkinsdisplay.display.text("len " + str(serial.pending_len()), 0, 100)
             jenkinsdisplay.display.update()
             
-        elif last_show_time == -1 or time.ticks_diff(time.ticks_ms(), last_show_time) > 333:
+        elif last_show_time == -1 or time.ticks_diff(time.ticks_ms(), last_show_time) > 50:
             ms_since_received = time.ticks_diff(time.ticks_ms(), received_time)
             jenkinsdisplay.show(show, ms_since_received)
             last_show_time = time.ticks_ms()
