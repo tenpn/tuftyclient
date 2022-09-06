@@ -98,6 +98,100 @@ def get_time_breakdown(total_secs: float):
     remaining_seconds = int(math.floor(total_secs - (complete_minutes*60) - (complete_hours*3600)))
     return (complete_hours, complete_minutes, remaining_seconds)
 
+def show_machine(machine_state: dict, this_row: int, scroll_timer: float) -> None:
+    display.set_pen(BG_EM)
+    display.line(0, this_row, 320, this_row)
+
+    display.set_pen(FG_BODY if machine_state["is_online"] else FG_BODY_BG)
+    display.text(machine_state["machine"], 10,
+                this_row+ROW_SPACING+ROW_BIAS, scale=ROW_SCALE)
+
+    if "build" not in machine_state:
+        return
+
+    # "Health:" and "Deploy:" prefixes don't scroll
+    build_prefix = ""
+    build_name = machine_state["build"]
+    build_delim_index = build_name.find(":")
+    if build_delim_index >= 0:
+        build_prefix = build_name[:build_delim_index+1]
+        build_name = build_name[build_delim_index+1:].strip()
+
+    build_prefix_col = HIGH_VIOLET if "Health" in build_prefix \
+        else HIGH_CYAN if "Deploy" in build_prefix \
+        else FG_BODY_BG
+    draw_prefixed_scrolled_text(build_prefix,
+                                build_name,
+                                scroll_timer,
+                                COL_TAB,
+                                MAX_BUILD_NAME_WIDTH,
+                                this_row + ROW_SPACING+ROW_BIAS-2,
+                                build_prefix_col,
+                                HIGH_BLUE)
+
+    # changelists don't scroll
+    desc_prefix = str(
+        machine_state["changelist"]) if "changelist" in machine_state else ""
+    desc_text = machine_state["step"]
+
+    draw_prefixed_scrolled_text(desc_prefix,
+                                desc_text,
+                                scroll_timer,
+                                COL_TAB,
+                                MAX_DESC_WIDTH,
+                                this_row+ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT,
+                                FG_BODY_BG,
+                                FG_BODY)
+
+    # build a nice elapsed string
+    (machine_elapsed_hours, machine_elapsed_minutes, machine_elapsed_seconds) = \
+        get_time_breakdown(machine_state["duration"] + scroll_timer)
+    machine_elapsed_str = f"{machine_elapsed_hours}:{machine_elapsed_minutes:02}:{machine_elapsed_seconds:02}"
+    display.set_pen(FG_BODY_BG)
+    display.text(machine_elapsed_str, COL_TAB_2, this_row + ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT, scale=INFO_SCALE)
+    
+def show_recent(recent_state: dict, top: int, scroll_timer:float) -> None:
+    """takes up bottom part of screen with a single Interesting build
+
+    Args:
+        recent_state (dict): {build: str, changelist: int, age: int/seconds, result: str}
+        top (int): below this y value, we'll take over the whole screen
+    """
+    display.set_pen(HIGH_BLUE)
+    display.line(0, top, 320, top)
+
+    remaining_y = 240-top
+    status_circle_radius = (int)((remaining_y - ROW_SPACING*2)/2)
+
+    build_col = HIGH_GREEN if recent_state["result"] == "SUCCESS" \
+        else HIGH_YELLOW if recent_state["result"] == "ABORTED" \
+        else HIGH_RED
+    display.set_pen(build_col)
+    row_status_circle_center = top + ROW_SPACING + status_circle_radius
+    col_status_circle_center = 10 + status_circle_radius
+    display.circle(col_status_circle_center, row_status_circle_center, status_circle_radius)
+    
+    text_tab = 10+status_circle_radius * 2+10
+
+    # "Health:" and "Deploy:" prefixes don't scroll
+    build_prefix = ""
+    build_name = recent_state["build"]
+    build_delim_index = build_name.find(":")
+    if build_delim_index >= 0:
+        build_prefix = build_name[:build_delim_index+1]
+        build_name = build_name[build_delim_index+1:].strip()
+    draw_prefixed_scrolled_text(build_prefix, build_name, scroll_timer, 
+                                text_tab, 310-text_tab, 
+                                row_status_circle_center-ROW_INFO_HEIGHT-1, 
+                                build_col, build_col)
+    
+    display.text(str(recent_state["changelist"]), text_tab, row_status_circle_center+1)
+    
+    display.set_pen(FG_BODY_BG)
+    (recent_hours, recent_minutes, recent_seconds) = get_time_breakdown(recent_state["age"] + scroll_timer)
+    recent_age_str = f"{recent_hours}:{recent_minutes:02}:{recent_seconds:02}"
+    display.text(recent_age_str, COL_TAB_2, row_status_circle_center+1, scale=INFO_SCALE)
+
 def show(jenkins_state: dict, ms_since_received: int) -> None:
     """displays state on picographics
 
@@ -113,110 +207,60 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
     row_step = 8*ROW_SCALE + ROW_SPACING*2
     row = (int)(ROW_SPACING/2)
 
+    scroll_timer = ms_since_received/1000.0
+    
     for machine_state in jenkins_state["machines"]:
-        display.set_pen(BG_EM)
-        this_row = row
+        show_machine(machine_state, row, scroll_timer)
         row += row_step
-        display.line(0, this_row, 320, this_row)
-
-        display.set_pen(FG_BODY if machine_state["is_online"] else FG_BODY_BG)
-        display.text(machine_state["machine"], 10, this_row+ROW_SPACING+ROW_BIAS, scale=ROW_SCALE)
         
-        if "build" not in machine_state:
-            continue
-        
-        scroll_timer = ms_since_received/1000.0
-        
-        # "Health:" and "Deploy:" prefixes don't scroll
-        build_prefix = ""
-        build_name = machine_state["build"]
-        build_delim_index = build_name.find(":")
-        if build_delim_index >= 0:
-            build_prefix = build_name[:build_delim_index+1]
-            build_name = build_name[build_delim_index+1:].strip()
-            
-        build_prefix_col = HIGH_VIOLET if "Health" in build_prefix \
-            else HIGH_CYAN if "Deploy" in build_prefix \
-            else FG_BODY_BG
-        draw_prefixed_scrolled_text(build_prefix, 
-                                    build_name, 
-                                    scroll_timer, 
-                                    COL_TAB,
-                                    MAX_BUILD_NAME_WIDTH, 
-                                    this_row + ROW_SPACING+ROW_BIAS-2, 
-                                    build_prefix_col, 
-                                    HIGH_BLUE)
-        
-        # changelists don't scroll
-        desc_prefix = str(machine_state["changelist"]) if "changelist" in machine_state else ""
-        desc_text = machine_state["step"]
-        
-        draw_prefixed_scrolled_text(desc_prefix, 
-                                    desc_text, 
-                                    scroll_timer, 
-                                    COL_TAB, 
-                                    MAX_DESC_WIDTH, 
-                                    this_row+ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT, 
-                                    FG_BODY_BG, 
-                                    FG_BODY)
-        
-        # build a nice elapsed string
-        (machine_elapsed_hours, machine_elapsed_minutes, machine_elapsed_seconds) = \
-            get_time_breakdown(machine_state["duration"] + (ms_since_received/1000))
-        machine_elapsed_str = f"{machine_elapsed_hours}:{machine_elapsed_minutes:02}:{machine_elapsed_seconds:02}"
-        display.set_pen(FG_BODY_BG)
-        display.text(machine_elapsed_str, COL_TAB_2, this_row + ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT, scale=INFO_SCALE)
-
-    display.set_pen(HIGH_BLUE)
-    display.line(0, row, 320, row)
-
-    remaining_y = 240-row
-    status_circle_radius = (int)((remaining_y - ROW_SPACING*2)/2)
-
-    display.set_pen(HIGH_GREEN)
-    row_status_circle_center = row + ROW_SPACING + status_circle_radius
-    display.circle(10 + status_circle_radius,
-                row_status_circle_center, status_circle_radius)
-    display.text("Health: PS4 Rel 20220", 10+status_circle_radius *
-                2+10, row_status_circle_center-8, scale=INFO_SCALE)
-
+    show_recent(jenkins_state["recent"], row, scroll_timer)
+    
+    # show how old this data is in the corner
     (data_age_hours, data_age_mins, data_age_secs) = get_time_breakdown(ms_since_received/1000)
     data_age_str = "rx " + \
         (f"{data_age_hours}:{data_age_mins:02}:{data_age_secs:02}" if data_age_hours > 0 else f"{data_age_mins}:{data_age_secs:02}")
     data_age_width = display.measure_text(data_age_str, scale=1)
-    display.set_pen(FG_BODY_BG if ms_since_received < 900000 else FG_BODY_EM)
+    display.set_pen(FG_BODY_BG if ms_since_received < (15*60*60*1000) else FG_BODY_EM) # show more stringly if >15min old
     display.text(data_age_str, 305-data_age_width, 225, scale=1)
     
     display.update()
 
 if __name__ == "__main__":
     # some testing data 
-    data = {"machines": [
-        {
-            "machine": "N1",
-            "is_online": True,
-            "build": "Health: release-pc-EU-Debug",
-            "changelist": 24876,
-            "step": "Editmode-Tests",
-            "duration": 200
-        },
-        {
-            "machine": "N2",
-            "is_online": True,
-            "build": "Deploy: release-ps5-EU-Release",
-            "changelist": 24876,
-            "step": "Editmode-Tests HERE LONG",
-            "duration": 1230
-        },
-        {
-            "machine": "N3",
-            "is_online": True,
-            "build": "trunk-pc-debug",
-            "changelist": 24876,
-            "step": "Prewarm",
-            "duration": 2320
-        },
-    ]}
+    data = {
+        "machines": [
+            {
+                "machine": "N1",
+                "is_online": True,
+                "build": "Health: release-pc-EU-Debug",
+                "changelist": 24876,
+                "step": "Editmode-Tests",
+                "duration": 200
+            },
+            {
+                "machine": "N2",
+                "is_online": True,
+                "build": "Deploy: release-ps5-EU-Release",
+                "changelist": 24876,
+                "step": "Editmode-Tests HERE LONG",
+                "duration": 1230
+            },
+            {
+                "machine": "N3",
+                "is_online": True,
+                "build": "trunk-pc-debug",
+                "changelist": 24876,
+                "step": "Prewarm",
+                "duration": 2320
+            },
+        ],
+        "recent": {
+            "build": "Deploy: trunk-PC-WW-Debug",
+            "changelist": 24897,
+            "age": 700,
+            "result": "SUCCESS"
+        }
+    }
     last_show = -1
     start_time = time.ticks_ms()
     while True:
