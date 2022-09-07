@@ -157,7 +157,29 @@ def show_machine(machine_state: dict, this_row: int, scroll_timer: float, clock_
     machine_elapsed_str = f"{machine_elapsed_hours}:{machine_elapsed_minutes:02}:{machine_elapsed_seconds:02}"
     display.set_pen(FG_BODY_BG)
     display.text(machine_elapsed_str, COL_TAB_2, this_row + ROW_SPACING + ROW_BIAS+ROW_INFO_HEIGHT, scale=INFO_SCALE)
-    
+
+def choose_recent(jenkins_state: dict, clock_adjust: float):
+    """pick a recent state to show
+
+    Args:
+        jenkins_state (dict): may contain none, one or both of recent_success and recent_failure
+        clock_adjust (float): seconds
+
+    Returns:
+        dict: the build to show, or None
+    """
+    # show failures, as long as they're not ancient. show successes if they're recent.
+    if "recent_failure" in jenkins_state:
+        failure_age = clock_adjust + jenkins_state["recent_failure"]["age"]
+        if failure_age < (2*60*60):
+            return jenkins_state["recent_failure"]
+        
+    if "recent_success" in jenkins_state:
+        success_age = clock_adjust + jenkins_state["recent_success"]["age"]
+        if success_age < (1*30*60):
+            return jenkins_state["recent_success"]
+        
+    return None
 
 def show_recent(recent_state: dict, top: int, scroll_timer: float, clock_adjust: float) -> None:
     """takes up bottom part of screen with a single Interesting build
@@ -166,15 +188,20 @@ def show_recent(recent_state: dict, top: int, scroll_timer: float, clock_adjust:
         recent_state (dict): {build: str, changelist: int, age: int/seconds, result: str}
         top (int): below this y value, we'll take over the whole screen
     """
-    display.set_pen(HIGH_BLUE)
-    display.line(0, top, 320, top)
-
-    remaining_y = 240-top
-    status_circle_radius = (int)((remaining_y - ROW_SPACING*2)/2)
-
     build_col = HIGH_GREEN if recent_state["result"] == "SUCCESS" \
         else HIGH_YELLOW if recent_state["result"] == "ABORTED" \
         else HIGH_RED
+        
+    secs_since_failure = recent_state["age"] + clock_adjust
+        
+    # hide old build info
+    if (build_col == HIGH_GREEN and secs_since_failure > (30*60)) \
+        or secs_since_failure > (2*60*60):
+        return
+    
+    remaining_y = 240-top
+    status_circle_radius = (int)((remaining_y - ROW_SPACING*2)/2)
+
     display.set_pen(build_col)
     row_status_circle_center = top + ROW_SPACING + status_circle_radius
     col_status_circle_center = 10 + status_circle_radius
@@ -197,7 +224,7 @@ def show_recent(recent_state: dict, top: int, scroll_timer: float, clock_adjust:
     display.text(str(recent_state["changelist"]), text_tab, row_status_circle_center+1)
     
     display.set_pen(FG_BODY_BG)
-    (recent_hours, recent_minutes, recent_seconds) = get_time_breakdown(recent_state["age"] + clock_adjust)
+    (recent_hours, recent_minutes, recent_seconds) = get_time_breakdown(secs_since_failure)
     recent_age_str = f"{recent_hours}:{recent_minutes:02}:{recent_seconds:02}"
     display.text(recent_age_str, COL_TAB_2, row_status_circle_center+1, scale=INFO_SCALE)
 
@@ -205,7 +232,7 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
     """displays state on picographics
 
     Args:
-        jenkins_state (object): {machines:[{machine: "", is_online: True/False, build: "", changelist: 0, step: "", duration: int/seconds }]} -- if build is missing, assumes offline
+        jenkins_state (object): {machines:[{machine: "", is_online: True/False, build: "", changelist: 0, step: "", duration: int/seconds }], recent_failure: {build: "", changelist: 0, age: int/seconds, result: ""}, recent_success: ...} -- if build is missing, assumes offline
     """
     display.set_pen(BG)
     display.clear()
@@ -224,7 +251,12 @@ def show(jenkins_state: dict, ms_since_received: int) -> None:
         row += row_step
         scroll_timer -= 0.8
         
-    show_recent(jenkins_state["recent"], row, scroll_timer, clock_adjust)
+    display.set_pen(HIGH_BLUE)
+    display.line(0, row, 320, row)
+
+    recent_to_show = choose_recent(jenkins_state, clock_adjust)
+    if recent_to_show is not None:
+        show_recent(recent_to_show, row, scroll_timer, clock_adjust)
     
     # show how old this data is in the corner
     (data_age_hours, data_age_mins, data_age_secs) = get_time_breakdown(clock_adjust)
@@ -265,10 +297,16 @@ if __name__ == "__main__":
                 "duration": 2320
             },
         ],
-        "recent": {
+        "recent_failure": {
             "build": "Deploy: release-PC-WW-release",
             "changelist": 24897,
-            "age": 700,
+            "age": 8000,
+            "result": "FAILURE"
+        },
+        "recent_success": {
+            "build": "Health: release-PC-WW-release",
+            "changelist": 24897,
+            "age": 5000,
             "result": "SUCCESS"
         }
     }
